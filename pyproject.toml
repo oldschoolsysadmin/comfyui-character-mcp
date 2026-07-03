@@ -1,0 +1,20 @@
+[project]
+name = "comfyui-character-mcp"
+version = "0.1.0"
+description = "MCP server exposing fixed ComfyUI character avatar presets as tools"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.28.1",
+]
+
+[project.scripts]
+comfyui-character-mcp = "comfyui_character_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/comfyui_character_mcp"]
