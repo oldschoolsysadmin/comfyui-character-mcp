@@ -1,177 +1,126 @@
-"""Character presets: a frozen ComfyUI workflow plus a small set of named
-"controls" that a caller (an LLM, via MCP tools) is allowed to adjust.
+"""Avatar presets: a frozen ComfyUI img2img workflow plus everything needed to
+render one character at a chosen expression.
 
-The workflow graph itself is never touched at the tool layer - only the
-specific node inputs a preset chooses to expose as controls. This is what
-keeps ComfyUI's graph complexity out of the MCP tool surface entirely: the
-model sees "pose", "expression", "seed", not node ids and class types.
-
-Two kinds of control are supported:
-
-- "prompt_fragment": free text or an enum choice that gets substituted into
-  a fixed prompt template (see PromptTemplate below) rather than written
-  directly to a node. This is how multiple controls (pose, expression, ...)
-  can compose into a single CLIPTextEncode text input without overwriting
-  each other.
-- "direct": a value written straight to one node's input, e.g. a seed or
-  cfg value on a KSampler node.
+The model never sees any of this - it picks a character and an emoji, and the
+preset is responsible for turning that into a concrete workflow graph. All the
+ComfyUI-specific detail (which node holds the positive prompt, which holds the
+reference image, what denoise to use) lives here, behind node "bindings".
 """
 
 from __future__ import annotations
 
 import copy
 import json
-import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-ControlKind = Literal["prompt_fragment", "direct"]
-
-
-@dataclass
-class Control:
-    name: str
-    kind: ControlKind
-    description: str
-    default: Any = None
-    choices: list[str] | None = None
-    minimum: float | None = None
-    maximum: float | None = None
-    # If true and no value/default is available, draw a random int from
-    # [minimum, maximum] instead of leaving the workflow's baked-in value in
-    # place. Useful for seed-like controls where "omitted" should mean
-    # "different every time", not "whatever the frozen workflow JSON has".
-    random_if_missing: bool = False
-    # Only set (and only meaningful) for kind="direct".
-    node_id: str | None = None
-    input_name: str | None = None
-
-    def validate(self, value: Any) -> Any:
-        if self.choices is not None and value not in self.choices:
-            raise ValueError(f"{self.name}: {value!r} is not one of {self.choices}")
-        if self.minimum is not None and value < self.minimum:
-            raise ValueError(f"{self.name}: {value} is below minimum {self.minimum}")
-        if self.maximum is not None and value > self.maximum:
-            raise ValueError(f"{self.name}: {value} is above maximum {self.maximum}")
-        return value
-
-    def to_schema(self) -> dict[str, Any]:
-        """Describe this control for list_characters() - no node ids leak out."""
-        schema: dict[str, Any] = {"description": self.description}
-        if self.choices is not None:
-            schema["choices"] = self.choices
-        if self.default is not None:
-            schema["default"] = self.default
-        if self.random_if_missing:
-            schema["random_if_omitted"] = True
-        if self.minimum is not None:
-            schema["minimum"] = self.minimum
-        if self.maximum is not None:
-            schema["maximum"] = self.maximum
-        return schema
+from .vocabulary import ExpressionVocabulary
 
 
-@dataclass
-class PromptTemplate:
+@dataclass(frozen=True)
+class NodeBinding:
+    """Points at one input on one node in the workflow graph."""
+
     node_id: str
     input_name: str
-    template: str
+
+    def write(self, workflow: dict[str, Any], value: Any) -> None:
+        workflow[self.node_id]["inputs"][self.input_name] = value
+
+    @classmethod
+    def from_pair(cls, pair: list[str]) -> NodeBinding:
+        node_id, input_name = pair
+        return cls(node_id=node_id, input_name=input_name)
+
+
+# The bindings every preset must define. Keeping this explicit means a
+# malformed preset fails loudly at load time, not mid-render.
+REQUIRED_BINDINGS = ("positive", "negative", "denoise", "seed", "reference_image")
 
 
 @dataclass
-class CharacterPreset:
+class AvatarPreset:
     id: str
     description: str
+    mode: str
     workflow: dict[str, Any]
-    controls: dict[str, Control]
-    prompt_template: PromptTemplate | None = None
+    reference_image: Path
+    base_positive: str
+    base_negative: str
+    denoise: float
+    bindings: dict[str, NodeBinding]
+    expressions: ExpressionVocabulary
 
     def to_schema(self) -> dict[str, Any]:
+        """What list_characters() shows - no ComfyUI internals leak out."""
         return {
             "id": self.id,
             "description": self.description,
-            "controls": {name: c.to_schema() for name, c in self.controls.items()},
+            "mode": self.mode,
+            "expressions": self.expressions.to_schema(),
         }
 
-    def build_workflow(self, values: dict[str, Any]) -> dict[str, Any]:
-        """Apply control values to a fresh copy of the frozen workflow graph."""
+    def compose_prompts(self, emoji: str) -> tuple[str, str]:
+        """Combine the character's base prompts with the expression fragments."""
+        expression = self.expressions.get(emoji)
+        positive = self.base_positive
+        if expression.positive:
+            positive = f"{positive}, {expression.positive}"
+        negative = self.base_negative
+        if expression.negative:
+            negative = f"{negative}, {expression.negative}"
+        return positive, negative
+
+    def build_workflow(self, emoji: str, reference_name: str, seed: int) -> dict[str, Any]:
+        """Produce a ready-to-queue workflow for this character + expression.
+
+        Works on a deep copy so the frozen template is never mutated. Only the
+        bound inputs change; the graph's topology is exactly what the preset
+        author exported from ComfyUI.
+        """
+        positive, negative = self.compose_prompts(emoji)
         workflow = copy.deepcopy(self.workflow)
-        fragments: dict[str, str] = {}
-
-        for name, control in self.controls.items():
-            if name in values:
-                value = control.validate(values[name])
-            elif control.default is not None:
-                value = control.default
-            elif control.random_if_missing:
-                lo = int(control.minimum) if control.minimum is not None else 0
-                hi = int(control.maximum) if control.maximum is not None else 2**32 - 1
-                value = random.randint(lo, hi)
-            else:
-                continue
-
-            if control.kind == "prompt_fragment":
-                fragments[name] = str(value)
-            elif control.kind == "direct":
-                workflow[control.node_id]["inputs"][control.input_name] = value
-
-        if self.prompt_template is not None:
-            fragment_defaults = {
-                name: (c.default or "")
-                for name, c in self.controls.items()
-                if c.kind == "prompt_fragment"
-            }
-            rendered = self.prompt_template.template.format(**{**fragment_defaults, **fragments})
-            node = workflow[self.prompt_template.node_id]
-            node["inputs"][self.prompt_template.input_name] = rendered
-
+        self.bindings["positive"].write(workflow, positive)
+        self.bindings["negative"].write(workflow, negative)
+        self.bindings["denoise"].write(workflow, self.denoise)
+        self.bindings["seed"].write(workflow, seed)
+        self.bindings["reference_image"].write(workflow, reference_name)
         return workflow
 
 
-def _load_control(name: str, raw: dict[str, Any]) -> Control:
-    return Control(
-        name=name,
-        kind=raw["kind"],
-        description=raw["description"],
-        default=raw.get("default"),
-        choices=raw.get("choices"),
-        minimum=raw.get("minimum"),
-        maximum=raw.get("maximum"),
-        random_if_missing=raw.get("random_if_missing", False),
-        node_id=raw.get("node_id"),
-        input_name=raw.get("input_name"),
-    )
-
-
-def load_preset(preset_path: Path) -> CharacterPreset:
-    """Load one `<id>.preset.json` and the workflow JSON it points to."""
-    raw = json.loads(preset_path.read_text())
+def load_preset(preset_path: Path, base_vocabulary: ExpressionVocabulary) -> AvatarPreset:
+    """Load one `<id>.preset.json`, its workflow, and its effective vocabulary."""
+    raw = json.loads(preset_path.read_text(encoding="utf-8"))
     workflow_path = preset_path.parent / raw["workflow"]
-    workflow = json.loads(workflow_path.read_text())
+    workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
 
-    prompt_template = None
-    if "prompt_template" in raw:
-        pt = raw["prompt_template"]
-        prompt_template = PromptTemplate(
-            node_id=pt["node_id"], input_name=pt["input_name"], template=pt["template"]
-        )
+    bindings = {name: NodeBinding.from_pair(pair) for name, pair in raw["bindings"].items()}
+    missing = [name for name in REQUIRED_BINDINGS if name not in bindings]
+    if missing:
+        raise ValueError(f"{preset_path.name} is missing required bindings: {missing}")
 
-    controls = {name: _load_control(name, c) for name, c in raw.get("controls", {}).items()}
+    expressions = base_vocabulary.merged(raw.get("expression_overrides", {}))
 
-    return CharacterPreset(
+    return AvatarPreset(
         id=raw["id"],
         description=raw["description"],
+        mode=raw.get("mode", "portrait"),
         workflow=workflow,
-        controls=controls,
-        prompt_template=prompt_template,
+        reference_image=preset_path.parent / raw["reference_image"],
+        base_positive=raw["base_positive"],
+        base_negative=raw["base_negative"],
+        denoise=float(raw["denoise"]),
+        bindings=bindings,
+        expressions=expressions,
     )
 
 
-def load_all_presets(presets_dir: Path) -> dict[str, CharacterPreset]:
-    """Load every `*.preset.json` in a directory, keyed by preset id."""
-    presets: dict[str, CharacterPreset] = {}
+def load_all_presets(
+    presets_dir: Path, base_vocabulary: ExpressionVocabulary
+) -> dict[str, AvatarPreset]:
+    presets: dict[str, AvatarPreset] = {}
     for preset_path in sorted(presets_dir.glob("*.preset.json")):
-        preset = load_preset(preset_path)
+        preset = load_preset(preset_path, base_vocabulary)
         presets[preset.id] = preset
     return presets

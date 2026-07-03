@@ -1,16 +1,17 @@
 """Minimal HTTP client for a local ComfyUI instance.
 
-ComfyUI's API is intentionally low-level: you POST a full workflow graph to
-/prompt, then poll /history until the job finishes, then GET /view to pull
-back whatever image files it wrote. This module wraps that three-step dance
-so the rest of the server can just say "run this workflow, give me image
-bytes" without knowing about ComfyUI's job model.
+ComfyUI's API is intentionally low-level: you (optionally) upload input images,
+POST a full workflow graph to /prompt, poll /history until the job finishes,
+then GET /view to pull back whatever image files it wrote. This module wraps
+that dance so the rest of the server can just say "upload this reference, run
+this workflow, give me image bytes" without knowing about ComfyUI's job model.
 """
 
 from __future__ import annotations
 
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -27,6 +28,27 @@ class ComfyUIClient:
         # ComfyUI groups websocket progress messages by client_id; we don't
         # use the websocket here, but /prompt still expects one.
         self.client_id = str(uuid.uuid4())
+
+    def upload_image(self, path: Path, overwrite: bool = True) -> str:
+        """Upload a local image into ComfyUI's input space; return its ref name.
+
+        This is what lets a preset keep its reference image in the repo instead
+        of requiring the user to pre-stage files in ComfyUI's input folder. The
+        returned name is what a LoadImage node's "image" input expects (prefixed
+        with a subfolder if ComfyUI placed it in one).
+        """
+        with open(path, "rb") as f:
+            resp = httpx.post(
+                f"{self.base_url}/upload/image",
+                files={"image": (path.name, f, "image/png")},
+                data={"overwrite": "true" if overwrite else "false"},
+                timeout=30.0,
+            )
+        if resp.status_code != 200:
+            raise ComfyUIError(f"Reference upload failed: {resp.status_code} {resp.text}")
+        info = resp.json()
+        subfolder = info.get("subfolder", "")
+        return f"{subfolder}/{info['name']}" if subfolder else info["name"]
 
     def queue_prompt(self, workflow: dict[str, Any]) -> str:
         """Submit a workflow graph (API-format JSON) and return its prompt_id."""

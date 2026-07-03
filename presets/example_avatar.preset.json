@@ -1,0 +1,18 @@
+{
+  "id": "example_avatar",
+  "description": "Example portrait avatar (img2img over a reference image). Preconfigured for the DreamShaper_8 SD1.5 checkpoint with a generated reference. To make your own character: (1) drop in a real reference portrait as the reference_image, (2) set ckpt_name in example_avatar.workflow.json to a checkpoint you have installed, (3) rewrite base_positive to describe that character. Tune 'denoise' up for more expression range, down to stay closer to the reference.",
+  "mode": "portrait",
+  "workflow": "example_avatar.workflow.json",
+  "reference_image": "example_avatar.reference.png",
+  "base_positive": "portrait of a friendly humanoid android robot, sleek white ceramic and brushed chrome face plating, expressive glowing cyan eyes, articulated mechanical facial features, head and shoulders framing, studio lighting, highly detailed, sharp focus",
+  "base_negative": "blurry, low quality, deformed, disfigured, extra limbs, text, watermark, signature",
+  "denoise": 0.45,
+  "bindings": {
+    "positive": ["6", "text"],
+    "negative": ["7", "text"],
+    "denoise": ["3", "denoise"],
+    "seed": ["3", "seed"],
+    "reference_image": ["10", "image"]
+  },
+  "expression_overrides": {}
+}

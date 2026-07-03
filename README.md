@@ -46,34 +46,52 @@ command (adjust the path to wherever you cloned this repo):
 
 ## Tools
 
-- `list_characters()` - lists every loaded preset, its description, and the
-  controls it exposes (with descriptions, choices, defaults).
-- `generate_avatar(character, controls)` - runs a preset's workflow with the
-  given control values applied, and returns the resulting image.
+- `list_characters()` - lists every loaded character, its description, and the
+  expressions (emoji + label) it supports.
+- `set_expression(emoji, character?)` - renders the avatar showing that
+  expression and returns the image. `character` is optional; omit it to reuse
+  the currently-selected character. Only emoji in the character's allow-list
+  are accepted - anything else is rejected before it reaches the model.
+- `get_current_look()` - reports the currently-selected character and its last
+  expression (the small bit of session state the setter tools maintain).
+
+## How a render works
+
+Each character is an **img2img** flow: the preset's reference image is uploaded
+to ComfyUI, VAE-encoded, and run through the sampler at a **low denoise**. Low
+denoise keeps the generated face locked to the reference (that's the identity
+mechanism); the chosen expression's prompt fragments nudge the face within that
+budget. Turn `denoise` up in the preset for more expression range, down to stay
+closer to the reference. If denoise alone can't hold identity across strong
+expressions, the next step is adding low-strength ControlNet edge-following.
+
+## Expression vocabulary
+
+`vocabularies/expressions.json` is the shared, character-independent set of
+emoji. Each maps to `{positive, negative}` prompt fragments (CLIP can't read
+emoji, so this translation is mandatory). A preset overrides only the emoji it
+wants to tune via `expression_overrides`; everything else falls back to the
+shared default. The emoji keys are the allow-list `set_expression()` enforces.
 
 ## Adding a character preset
 
-Each preset is two files dropped in `presets/`:
+Each character is defined by files dropped in `presets/`:
 
-1. **`<id>.workflow.json`** - a ComfyUI workflow exported in **API format**
-   (in the ComfyUI UI: enable Dev Mode in settings, then use
-   "Save (API Format)"). This is the frozen graph; nothing here changes at
-   request time except the specific inputs a control targets.
-2. **`<id>.preset.json`** - describes the preset's controls. Two kinds:
-   - `"kind": "prompt_fragment"` - the value gets substituted into
-     `prompt_template.template` (a single string, rendered into one node's
-     text input), so several controls can compose into one prompt without
-     overwriting each other.
-   - `"kind": "direct"` - the value is written straight to one
-     `node_id`/`input_name` in the workflow, e.g. a KSampler's `seed`.
+1. **`<id>.workflow.json`** - a ComfyUI img2img workflow exported in **API
+   format** (enable Dev Mode in ComfyUI settings, then "Save (API Format)").
+   This is the frozen graph; only the inputs named in `bindings` change per
+   request.
+2. **`<id>.preset.json`** - the character definition:
+   - `reference_image` - the portrait this character is generated from.
+   - `base_positive` / `base_negative` - the character's identity prompt and
+     quality negatives. Expression fragments are appended to these.
+   - `denoise` - the identity-vs-expression trade-off knob (not model-facing).
+   - `bindings` - maps logical roles (`positive`, `negative`, `denoise`,
+     `seed`, `reference_image`) to `[node_id, input_name]` pairs in the
+     workflow. This is the only place ComfyUI node ids appear.
+   - `expression_overrides` (optional) - per-emoji fragment overrides.
+3. The reference image itself (e.g. `<id>.reference.png`).
 
-   A control can set `"random_if_missing": true` (only makes sense for
-   numeric `direct` controls) so that omitting it draws a random value in
-   `[minimum, maximum]` instead of reusing whatever the frozen workflow file
-   happens to contain.
-
-See `presets/example_hero.preset.json` and
-`presets/example_hero.workflow.json` for a worked (placeholder) example -
-before using it for real, swap `ckpt_name` in the workflow JSON for a
-checkpoint you actually have installed, and rewrite the prompt template to
-describe your actual character.
+See `presets/example_avatar.*` for a worked (placeholder) example - before
+real use, swap the reference image, set `ckpt_name` in the workflow to a
+checkpoint you have installed, and rewrite `base_positive` for your character.

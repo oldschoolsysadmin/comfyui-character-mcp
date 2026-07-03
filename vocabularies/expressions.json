@@ -1,0 +1,21 @@
+{
+  "_comment": "Shared, character-independent expression vocabulary. Keys are the emoji allow-list exposed by set_expression(). Each entry maps an emoji to prompt fragments that get appended to a preset's base positive/negative prompts. A preset may override any entry via its own 'expression_overrides'. CLIP cannot read emoji, so this mapping to natural language is what actually reaches the sampler.",
+  "expressions": {
+    "😊": { "label": "smile",        "positive": "warm friendly smile, soft happy eyes",              "negative": "frown, sad, angry" },
+    "😃": { "label": "grin",         "positive": "big cheerful grin, bright wide eyes",               "negative": "frown, sad" },
+    "😂": { "label": "laughing",     "positive": "laughing joyfully, eyes crinkled shut, open smile", "negative": "neutral, frown" },
+    "😐": { "label": "neutral",      "positive": "calm neutral expression, relaxed face",             "negative": "smiling, grinning, frowning" },
+    "😌": { "label": "content",      "positive": "content peaceful expression, gentle closed-eye smile", "negative": "frown, tense" },
+    "😉": { "label": "wink",         "positive": "playful wink, one eye closed, slight smirk",        "negative": "both eyes open wide" },
+    "😏": { "label": "smirk",        "positive": "sly confident smirk, one eyebrow raised",           "negative": "frown, wide smile" },
+    "😢": { "label": "sad",          "positive": "sad sorrowful expression, teary downturned eyes",   "negative": "smiling, cheerful" },
+    "😔": { "label": "disappointed", "positive": "disappointed downcast expression, eyes lowered",    "negative": "smiling, cheerful" },
+    "😠": { "label": "angry",        "positive": "angry expression, furrowed brow, hard glaring eyes","negative": "smiling, calm, relaxed" },
+    "😮": { "label": "surprised",    "positive": "surprised expression, wide eyes, slightly open mouth","negative": "calm, neutral" },
+    "😲": { "label": "shocked",      "positive": "shocked expression, very wide eyes, mouth agape",   "negative": "calm, neutral, smiling" },
+    "😳": { "label": "embarrassed",  "positive": "embarrassed shy expression, blushing cheeks",       "negative": "confident, angry" },
+    "😨": { "label": "fearful",      "positive": "fearful anxious expression, worried raised brows",  "negative": "calm, happy, confident" },
+    "🤔": { "label": "thinking",     "positive": "thoughtful pensive expression, slightly furrowed brow", "negative": "smiling, blank" },
+    "😴": { "label": "sleepy",       "positive": "sleepy expression, half-closed heavy eyes, relaxed","negative": "wide awake, alert, wide eyes" }
+  }
+}
