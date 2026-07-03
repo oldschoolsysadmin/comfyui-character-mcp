@@ -26,6 +26,13 @@ class Expression:
     # Appended to the preset's base positive / negative prompts respectively.
     positive: str = ""
     negative: str = ""
+    # Per-expression denoise override. None means "use the preset's default
+    # denoise". Expressions that only shift a small facial muscle (a smirk, a
+    # closed-mouth frown) hold identity fine at a low denoise; expressions that
+    # need to open the mouth or bug out the eyes (surprised, laughing) need
+    # more denoise budget to actually render, regardless of how emotionally
+    # "intense" the expression is.
+    denoise: float | None = None
 
 
 class ExpressionVocabulary:
@@ -61,6 +68,7 @@ class ExpressionVocabulary:
                 label=fields.get("label", base.label if base else emoji),
                 positive=fields.get("positive", base.positive if base else ""),
                 negative=fields.get("negative", base.negative if base else ""),
+                denoise=fields.get("denoise", base.denoise if base else None),
             )
         return ExpressionVocabulary(merged)
 
@@ -73,6 +81,7 @@ def load_default_vocabulary(path: Path) -> ExpressionVocabulary:
             label=fields.get("label", emoji),
             positive=fields.get("positive", ""),
             negative=fields.get("negative", ""),
+            denoise=fields.get("denoise"),
         )
         for emoji, fields in raw["expressions"].items()
     }

@@ -48,7 +48,7 @@ class AvatarPreset:
     reference_image: Path
     base_positive: str
     base_negative: str
-    denoise: float
+    denoise: float  # fallback used when an expression doesn't set its own
     bindings: dict[str, NodeBinding]
     expressions: ExpressionVocabulary
 
@@ -80,10 +80,13 @@ class AvatarPreset:
         author exported from ComfyUI.
         """
         positive, negative = self.compose_prompts(emoji)
+        expression = self.expressions.get(emoji)
+        denoise = expression.denoise if expression.denoise is not None else self.denoise
+
         workflow = copy.deepcopy(self.workflow)
         self.bindings["positive"].write(workflow, positive)
         self.bindings["negative"].write(workflow, negative)
-        self.bindings["denoise"].write(workflow, self.denoise)
+        self.bindings["denoise"].write(workflow, denoise)
         self.bindings["seed"].write(workflow, seed)
         self.bindings["reference_image"].write(workflow, reference_name)
         return workflow
