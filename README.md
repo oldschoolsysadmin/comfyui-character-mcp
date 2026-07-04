@@ -65,6 +65,19 @@ budget. Turn `denoise` up in the preset for more expression range, down to stay
 closer to the reference. If denoise alone can't hold identity across strong
 expressions, the next step is adding low-strength ControlNet edge-following.
 
+This works well for expressions that reshape features already present in the
+reference (a frown, wider eyes, a smirk). It does *not* work for "additive"
+expressions that introduce geometry the reference doesn't have at all - cat
+ears/whiskers, sunglasses, a party hat. No amount of denoise fixes this: the
+base identity prompt (e.g. "portrait of a cheerful man...") keeps winning
+even near denoise 1.0, because the prompt and the reference agree on "this is
+a specific human face" and fight any addition to it. See
+`vocabularies/expressions.json`'s `_additive_emoji_limitation` note. The fix
+isn't a bigger denoise number, it's giving those expressions their own
+reference image (a version of the character that already has cat ears, say)
+so the prompt and reference agree on what's being rendered - not yet
+supported, but the natural next step for this class of expression.
+
 Before encoding, the reference image is also rescaled (via an `ImageScale`
 node) so its shorter side is ~512px, preserving aspect ratio - by default,
 computed automatically from the reference image's own dimensions (see
