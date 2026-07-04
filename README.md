@@ -147,14 +147,15 @@ an ugly disconnected block" respectively.
 
 ## Adding a character preset
 
-Each character is defined by files dropped in `presets/`:
+Each character is a directory under `presets/` named after its id, containing
+three standard-named files - `presets/<id>/{preset,workflow}.json,reference.png`:
 
-1. **`<id>.workflow.json`** - a ComfyUI img2img workflow exported in **API
+1. **`workflow.json`** - a ComfyUI img2img workflow exported in **API
    format** (enable Dev Mode in ComfyUI settings, then "Save (API Format)").
    This is the frozen graph; only the inputs named in `bindings` change per
    request.
-2. **`<id>.preset.json`** - the character definition:
-   - `reference_image` - the portrait this character is generated from.
+2. **`preset.json`** - the character definition (no `id` field - the
+   directory name *is* the id, so there's nothing to keep in sync):
    - `base_positive` / `base_negative` - the character's identity prompt and
      quality negatives. Expression fragments are appended to these.
    - `denoise` - the identity-vs-expression trade-off knob (not model-facing).
@@ -170,8 +171,9 @@ Each character is defined by files dropped in `presets/`:
      `output_height`) to `[node_id, input_name]` pairs in the workflow. This
      is the only place ComfyUI node ids appear.
    - `expression_overrides` (optional) - per-emoji fragment overrides.
-3. The reference image itself (e.g. `<id>.reference.png`).
+3. **`reference.png`** - the reference portrait this character is generated
+   from.
 
-See `presets/example_avatar.*` for a worked (placeholder) example - before
-real use, swap the reference image, set `ckpt_name` in the workflow to a
-checkpoint you have installed, and rewrite `base_positive` for your character.
+See `presets/example/` for a worked example - before real use, swap
+`reference.png`, set `ckpt_name` in `workflow.json` to a checkpoint you have
+installed, and rewrite `base_positive` for your character.

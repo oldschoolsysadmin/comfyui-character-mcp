@@ -138,19 +138,27 @@ class AvatarPreset:
         return workflow
 
 
-def load_preset(preset_path: Path, base_vocabulary: ExpressionVocabulary) -> AvatarPreset:
-    """Load one `<id>.preset.json`, its workflow, and its effective vocabulary."""
+def load_preset(preset_dir: Path, base_vocabulary: ExpressionVocabulary) -> AvatarPreset:
+    """Load one character from a directory of standard-named files:
+
+        presets/<id>/preset.json    - character definition
+        presets/<id>/workflow.json  - frozen ComfyUI API-format workflow
+        presets/<id>/reference.png  - the reference portrait
+
+    The directory name *is* the character id - one source of truth instead of
+    an id duplicated inside preset.json that could drift out of sync with it.
+    """
+    preset_path = preset_dir / "preset.json"
     raw = json.loads(preset_path.read_text(encoding="utf-8"))
-    workflow_path = preset_path.parent / raw["workflow"]
-    workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+    workflow = json.loads((preset_dir / "workflow.json").read_text(encoding="utf-8"))
+    reference_image = preset_dir / "reference.png"
 
     bindings = {name: NodeBinding.from_pair(pair) for name, pair in raw["bindings"].items()}
     missing = [name for name in REQUIRED_BINDINGS if name not in bindings]
     if missing:
-        raise ValueError(f"{preset_path.name} is missing required bindings: {missing}")
+        raise ValueError(f"{preset_path} is missing required bindings: {missing}")
 
     expressions = base_vocabulary.merged(raw.get("expression_overrides", {}))
-    reference_image = preset_path.parent / raw["reference_image"]
 
     if "output_width" in raw and "output_height" in raw:
         output_width, output_height = raw["output_width"], raw["output_height"]
@@ -159,7 +167,7 @@ def load_preset(preset_path: Path, base_vocabulary: ExpressionVocabulary) -> Ava
         output_width, output_height = _scale_to_min_side(ref_w, ref_h, DEFAULT_ENCODE_MIN_SIDE)
 
     return AvatarPreset(
-        id=raw["id"],
+        id=preset_dir.name,
         description=raw["description"],
         mode=raw.get("mode", "portrait"),
         workflow=workflow,
@@ -178,7 +186,7 @@ def load_all_presets(
     presets_dir: Path, base_vocabulary: ExpressionVocabulary
 ) -> dict[str, AvatarPreset]:
     presets: dict[str, AvatarPreset] = {}
-    for preset_path in sorted(presets_dir.glob("*.preset.json")):
-        preset = load_preset(preset_path, base_vocabulary)
+    for preset_dir in sorted(p.parent for p in presets_dir.glob("*/preset.json")):
+        preset = load_preset(preset_dir, base_vocabulary)
         presets[preset.id] = preset
     return presets

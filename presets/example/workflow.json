@@ -8,7 +8,7 @@
   "10": {
     "class_type": "LoadImage",
     "inputs": {
-      "image": "example_avatar.reference.png",
+      "image": "reference.png",
       "upload": "image"
     }
   },
@@ -68,7 +68,7 @@
   "9": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "example_avatar",
+      "filename_prefix": "example",
       "images": ["8", 0]
     }
   }
