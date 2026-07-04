@@ -12,10 +12,20 @@
       "upload": "image"
     }
   },
+  "12": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["10", 0],
+      "upscale_method": "lanczos",
+      "width": 512,
+      "height": 512,
+      "crop": "disabled"
+    }
+  },
   "11": {
     "class_type": "VAEEncode",
     "inputs": {
-      "pixels": ["10", 0],
+      "pixels": ["12", 0],
       "vae": ["4", 2]
     }
   },

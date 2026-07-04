@@ -12,7 +12,9 @@
     "negative": ["7", "text"],
     "denoise": ["3", "denoise"],
     "seed": ["3", "seed"],
-    "reference_image": ["10", "image"]
+    "reference_image": ["10", "image"],
+    "output_width": ["12", "width"],
+    "output_height": ["12", "height"]
   },
   "expression_overrides": {}
 }

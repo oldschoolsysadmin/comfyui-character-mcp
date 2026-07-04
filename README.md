@@ -65,6 +65,16 @@ budget. Turn `denoise` up in the preset for more expression range, down to stay
 closer to the reference. If denoise alone can't hold identity across strong
 expressions, the next step is adding low-strength ControlNet edge-following.
 
+Before encoding, the reference image is also rescaled (via an `ImageScale`
+node) so its shorter side is ~512px, preserving aspect ratio - by default,
+computed automatically from the reference image's own dimensions (see
+`output_width`/`output_height` below). This is a **quality** setting, not a
+display one: SD1.5-family checkpoints are trained around 512px, and encoding
+either much smaller or much larger than that tends to hurt output quality
+regardless of denoise. Shrinking the image for chat display is a separate,
+later concern - see "Suggested system prompt" below for controlling that
+with plain markdown, independent of the actual render resolution.
+
 ## Expression vocabulary
 
 `vocabularies/expressions.json` is the shared, character-independent set of
@@ -72,6 +82,68 @@ emoji. Each maps to `{positive, negative}` prompt fragments (CLIP can't read
 emoji, so this translation is mandatory). A preset overrides only the emoji it
 wants to tune via `expression_overrides`; everything else falls back to the
 shared default. The emoji keys are the allow-list `set_expression()` enforces.
+
+## Suggested system prompt
+
+Some MCP clients bridge to models over a text-only tool-result API (common
+for local models served via Ollama/vLLM-style endpoints). Those clients
+receive the image content block from `set_expression`, save it to disk
+themselves, and hand the model back a text placeholder with a markdown
+image link to include in its reply - the model never "sees" the pixels,
+it just has to remember to echo that markdown back to the user. Models
+reliably forget this unless told to.
+
+Beyond just remembering to include the image, plain markdown image syntax
+also forces a line break before and after the image, at full render
+resolution (~512px, kept large for generation quality - see "How a render
+works" above) - the picture ends up as a big block, disconnected from the
+model's commentary about it. A raw HTML `<img>` tag with a `width` fixes
+both problems at once: it shrinks the image for display and lets text wrap
+beside it (most chat renderers that support markdown also render inline
+HTML):
+
+```
+Don't do this (forces the image onto its own block, no wrap):
+
+![Image](./image-1783113534781.png)
+
+He grinned, clearly pleased with how that turned out.
+```
+
+```
+Do this instead (text flows beside a small inline image):
+
+<img src="./image-1783113534781.png" width="150" align="left"> He grinned,
+clearly pleased with how that turned out, and asked what you wanted to see
+next.
+```
+
+A system prompt covering all of this:
+
+```
+You have access to an avatar tool for this character. Guidelines:
+
+- Call set_expression(emoji) whenever the character's emotional tone
+  shifts in the conversation - don't wait to be asked for a picture.
+- Only use emoji from the character's supported list (call
+  list_characters() if you're unsure which ones are allowed). Using an
+  unsupported emoji will be rejected.
+- The tool result includes an image file reference. You MUST include that
+  image in your reply - it will not be shown to the user unless you
+  include it yourself.
+- Wrap the image inline with your commentary instead of putting it on its
+  own line: use `<img src="..." width="150" align="left">` (or
+  `align="right"`) directly before the paragraph of text that comments on
+  the expression, so the picture and the reaction read together. Don't use
+  bare `![Image](...)` markdown for this - it breaks the image onto its
+  own block and separates it from the text about it.
+- Don't describe the image in words instead of showing it; the point of
+  the tool is the picture, not a caption.
+```
+
+The middle two points matter for any client; the last two are the ones
+that fix "generated the image but never showed it" and "showed it, but as
+an ugly disconnected block" respectively.
 
 ## Adding a character preset
 
@@ -86,9 +158,17 @@ Each character is defined by files dropped in `presets/`:
    - `base_positive` / `base_negative` - the character's identity prompt and
      quality negatives. Expression fragments are appended to these.
    - `denoise` - the identity-vs-expression trade-off knob (not model-facing).
+   - `output_width` / `output_height` (optional) - the resolution the
+     reference image is rescaled to before VAE encoding, via a resize node in
+     the workflow. If omitted, both are computed automatically from the
+     reference image's own dimensions so its shorter side lands at 512px,
+     preserving aspect ratio - only set these explicitly to override that.
+     Needs matching `output_width`/`output_height` bindings pointed at the
+     resize node.
    - `bindings` - maps logical roles (`positive`, `negative`, `denoise`,
-     `seed`, `reference_image`) to `[node_id, input_name]` pairs in the
-     workflow. This is the only place ComfyUI node ids appear.
+     `seed`, `reference_image`, plus optionally `output_width`/
+     `output_height`) to `[node_id, input_name]` pairs in the workflow. This
+     is the only place ComfyUI node ids appear.
    - `expression_overrides` (optional) - per-emoji fragment overrides.
 3. The reference image itself (e.g. `<id>.reference.png`).
 
